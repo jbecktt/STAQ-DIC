@@ -1,0 +1,6 @@
+*.asv
+*.mat
+\data
+\junk
+defCases_wcSTAQ.m 
+ba_interp2.mexw64
