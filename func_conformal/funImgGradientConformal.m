@@ -36,7 +36,7 @@ else
     method = [];
 end
 
-ImgRefMask(ImgRefMask==0) = NaN;
+% ImgRefMask(ImgRefMask==0) = NaN;
     
 %%
 if strcmp(method,'splinecubic')
@@ -58,7 +58,7 @@ else
     DfDxEndy = size(ImgRef,2)-3; % min([coordinatesFEM(M*N,2)+0.5*winsize,size(fNormalized,2)-3]);
     
     % Apply finite difference filter
-    I = ImgRef( DfDxStartx-3:DfDxEndx+3, DfDxStarty-3:DfDxEndy+3 ); 
+    I = ImgRef(DfDxStartx-3:DfDxEndx+3, DfDxStarty-3:DfDxEndy+3); 
     DfDxNormalizedtemp = imfilter(I, imgradientMatrix);
     DfDyNormalizedtemp = imfilter(I, imgradientMatrix');
     
@@ -68,13 +68,17 @@ else
     
     % Assemble data set (edited in several ways to deal with conformal cropping in radial coordinates)
     DfAxis = [DfDxStartx-3,DfDxEndx-3,DfDxStarty-3,DfDxEndy-3];
-    Df.DfCropWidth = 3;
-    Df.DfAxis = DfAxis; Df.imgSize = imgSize; Df.imgSize = [Df.imgSize(1)-3,Df.imgSize(1)-6]; % adding corrector to bring back to normal img size 
+    % Df.DfCropWidth = 3;
+    Df.DfAxis = DfAxis; Df.imgSize = imgSize; Df.imgSize = [Df.imgSize(1)-3,Df.imgSize(2)-6]; % adding corrector to bring back to normal img size 
     Df.DfDx = DfDxNormalized;
     Df.DfDy = DfDyNormalized;
     
     % Multiply the image mask
     Df.ImgRefMask = ImgRefMask(4:end,4:end-3); % Generate image mask (editted to get rid of buffer for radial symmetry)
+    % Df.ImgRefMask = Df.ImgRefMask.*~isnan(DfDxNormalizedtemp(4:end, 4:end-3).*DfDyNormalizedtemp(4:end, 4:end-3)); % NaN where both derivatives do not exist
+    Df.ImgRefMask(isnan(DfDxNormalizedtemp(4:end, 4:end-3).*DfDyNormalizedtemp(4:end, 4:end-3))) = NaN; % NaN where both derivatives do not exist
+    % Df.ImgRefMask(~isnan(Df.ImgRefMask)) = 1; 
+    % Df.ImgRefMask(isnan(Df.ImgRefMask)) = 0; % JGB: warning probably needs uncommented again ... testing without
     Df.DfDx = (Df.DfDx) .* Df.ImgRefMask(Df.DfAxis(1):Df.DfAxis(2), Df.DfAxis(3):Df.DfAxis(4));
     Df.DfDy = (Df.DfDy) .* Df.ImgRefMask(Df.DfAxis(1):Df.DfAxis(2), Df.DfAxis(3):Df.DfAxis(4));
      

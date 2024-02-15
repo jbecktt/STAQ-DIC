@@ -141,7 +141,8 @@ for ImgSeqNum = 2 : length(ImgNormalized)
     
     % ====== Generate a quadtree mesh considering sample's complex geometry ======
     DICmesh.elementMinSize = DICpara.winsizeMin; % min element size in the refined quadtree mesh
-    GenerateQuadtreeMesh; % Generate the quadtree mesh
+    % GenerateQuadtreeMesh; % Generate the quadtree mesh % JGB: comment
+    GenerateQuadtreeMeshConformal; % Generate the quadtree mesh % JGB: add
     
     % ====== No need to update search region in the incremental mode ======
     % DICpara.SizeOfFFTSearchRegion = [ ceil( max( [max(3+abs(U0(1:2:end))), 3] ) ), ...
@@ -152,44 +153,57 @@ for ImgSeqNum = 2 : length(ImgNormalized)
     fprintf('------------ Section 3 Done ------------ \n \n')
 
     %% Sectopm 3.5: Transformation to Radial Basis Image Form
-    clear fNormalizedMask_r fNormalized_r gNormalizedMask_r gNormalized_r RR TT XX YY
-
-    xc = 200; yc = 200;
+    clear weight fNormalizedMask_r fNormalized_r gNormalizedMask_r gNormalized_r fNormalizedMask_rdf fNormalized_rdf gNormalizedMask_rdf gNormalized_rdf RR TT XX_r YY_r Df_r u_r v_r DICmesh.r0 DICmesh.t0  DICmesh.coordinatesFEM_r U0_r
+    
+    % ====== Interpolate the images from x-y to r-θ ======
+    xc = 200; % column of OG image prior to transpose
+    yc = 200; % y of OG image prior to transpose
+    pad = 3;
 
     [xtemp,ytemp] = ndgrid(1:size(fNormalized,1),1:size(fNormalized,2));
-    [fNormalizedMask_r,RR,TT,XX,YY] = Cart2Rad(fNormalizedMask,xtemp,ytemp,xc,yc,"mask");
-    fNormalized_r = Cart2Rad(fNormalized,xtemp,ytemp,xc,yc,"cubic").*fNormalizedMask_r;
-    gNormalizedMask_r = Cart2Rad(gNormalizedMask,xtemp,ytemp,xc,yc,"mask");
-    gNormalized_r = Cart2Rad(gNormalized,xtemp,ytemp,xc,yc,"cubic").*gNormalizedMask_r;
+    [fNormalizedMask_rdf,RR_df,TT_df,XX_rdf,YY_rdf,weight] = Cart2Rad(fNormalizedMask,xtemp,ytemp,xc,yc,"mask",pad);
+    TT = TT_df(1+pad:end,1+pad:end-pad); RR = RR_df(1+pad:end,1+pad:end-pad);
+    XX_r = XX_rdf(1+pad:end,1+pad:end-pad); YY_r = YY_rdf(1+pad:end,1+pad:end-pad);
+    weight = weight(1+pad:end,1+pad:end-pad);
+    fNormalized_rdf = Cart2Rad(fNormalized,xtemp,ytemp,xc,yc,"cubic",pad).*fNormalizedMask_rdf;
+    gNormalizedMask_rdf = Cart2Rad(gNormalizedMask,xtemp,ytemp,xc,yc,"mask",pad);
+    gNormalized_rdf = Cart2Rad(gNormalized,xtemp,ytemp,xc,yc,"cubic",pad).*gNormalizedMask_rdf;
+
+    fNormalizedMask_r = fNormalizedMask_rdf(1+pad:end,1+pad:end-pad);
+    fNormalized_r = fNormalized_rdf(1+pad:end,1+pad:end-pad);
+    gNormalizedMask_r = gNormalizedMask_rdf(1+pad:end,1+pad:end-pad);
+    gNormalized_r = gNormalized_rdf(1+pad:end,1+pad:end-pad);
 
     figure, 
-    subplot(4,1,1); imshow(fNormalized_r); title('fNormalized_r'); colorbar;
-    subplot(4,1,2); imshow(gNormalized_r); title('gNormalized_r'); colorbar;
-    subplot(4,1,3); imshow(fNormalizedMask_r); title('fmask_r'); colorbar;
-    subplot(4,1,4); imshow(gNormalizedMask_r); title('gmask_r'); colorbar;
+    subplot(2,1,1); imshow(fNormalized_r); title('fNormalized_r'); colorbar;
+    subplot(2,1,2); imshow(gNormalized_r); title('gNormalized_r'); colorbar;
+    % subplot(4,1,3); imshow(fNormalizedMask_r); title('fmask_r'); colorbar;
+    % subplot(4,1,4); imshow(gNormalizedMask_r); title('gmask_r'); colorbar;
 
-    % Calculate derivatves in radial
-    overlap = 3; % currently set for the filter to match 7 pont finite derivative operator
-    fNormalized_rdf = [fNormalized_r(:,end-overlap+1:end),fNormalized_r,fNormalized_r(:,1:overlap)]; % padding theta (L<-->R) to avoid discontinuity
-    fNormalizedMask_rdf = [fNormalizedMask_r(:,end-overlap+1:end),fNormalizedMask_r,fNormalizedMask_r(:,1:overlap)];
-    fNormalized_rdf = [flipud(fNormalized_rdf(1:overlap,:));fNormalized_rdf]; % padding r = 0 only (up <--> down) to avoid discontinuity
-    fNormalizedMask_rdf = [flipud(fNormalizedMask_rdf(1:overlap,:));fNormalizedMask_rdf];
-
-    Df_r = funImgGradientConformal(fNormalized_rdf,fNormalized_rdf,fNormalizedMask_rdf);
+    % ====== Calculate derivatves in radial basis ======
+    Df_r = funImgGradientConformal(fNormalized_rdf,fNormalized_rdf,fNormalizedMask_rdf); % currently assumes pad = 3
+    Df_r.DfDy = Df_r.DfDy./weight(1:end-3,:); 
+    % Df_r.DfDy = Df_r.DfDy; 
 
     figure,
     subplot(2,1,1); imshow(Df_r.DfDx); title('Df_r.DfDx (DfDr)'); colorbar;
     subplot(2,1,2); imshow(Df_r.DfDy); title('Df_r.DfDy (DfDtheta)'); colorbar;
-    
-    % sus after this line!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    u_r = (sqrt((x0temp-xc+u).^2+(y0temp-yc+v).^2) - sqrt((x0temp-xc).^2+(y0temp-yc).^2))/(RR(2,1)-RR(1,1)); % radial displacement (px)
-    v_r = wrapToPi(atan2d(y0temp-yc+v,x0temp-xc+u)-atan2d(y0temp-yc,x0temp-xc))/(TT(1,2)-TT(1,1)); % angular displacement (degrees)
+    % u_rq = (sqrt((x0temp-xc+u).^2+(y0temp-yc+v).^2) - sqrt((x0temp-xc).^2+(y0temp-yc).^2))/(RR(2,1)-RR(1,1)); % radial displacement (row idx units)
+    % v_rq = wrapToPi(atan2d(y0temp-yc+v,x0temp-xc+u)-atan2d(y0temp-yc,x0temp-xc))/(TT(1,2)-TT(1,1)); % angular displacement (column idx units)
+
+    % ====== Initialize displacement estimates in radial basis ====== (lil sus due to r0 and t0)
+    % DICmesh.r0 = sqrt((DICmesh.x0-xc).^2 + (DICmesh.y0-yc).^2);
+    % DICmesh.t0 = wrapTo180(atan2d(DICmesh.y0-yc,DICmesh.x0-xc));
+    % DICmesh.coordinatesFEM_r = [DICmesh.r0(:),DICmesh.t0(:)];
     
-    DICmesh.r0 = sqrt((DICmesh.x0-xc).^2 + (DICmesh.y0-yc).^2);
-    DICmesh.t0 = wrapToPi(atan2d(DICmesh.y0-yc,DICmesh.x0-xc));
-    DICmesh.coordinatesFEM_r = [DICmesh.t0(:),DICmesh.r0(:)];
-    U0_r = Init(u_r,v_r,0,DICmesh.r0,DICmesh.t0,0);
+    DICmesh.coordaintesFEM_r(:,1) = sqrt((DICmesh.coordinatesFEM(:,1)-xc).^2 + (DICmesh.coordinatesFEM(:,2)-yc).^2);
+    DICmesh.coordaintesFEM_r(:,2) = wrapTo180(atan2d(DICmesh.coordinatesFEM(:,2)-yc,DICmesh.coordinatesFEM(:,1)-xc));
+    U0_rw(1:2:size(U0,1)) = (sqrt((DICmesh.coordinatesFEM(:,1)-xc+U0(1:2:size(U0,1))).^2 + (DICmesh.coordinatesFEM(:,2)-yc+U0(2:2:size(U0,1))).^2) - DICmesh.coordaintesFEM_r(:,1))/(RR(2,1)-RR(1,1));
+    U0_rw(2:2:size(U0,1)) = (wrapTo180(atan2d(DICmesh.coordinatesFEM(:,2)-yc+U0(2:2:size(U0,1)),DICmesh.coordinatesFEM(:,1)-xc+U0(1:2:size(U0,1))) - DICmesh.coordaintesFEM_r(:,2)))/(TT(1,2)-TT(1,1));
+    % U0_r = Init(u_rq,v_rq,0,DICmesh.r0,DICmesh.t0,0);
+
+    AScale = sum(weight.*~isnan(fNormalized_r),'all')/numel(fNormalized);
  
     %% Section 4: ALDIC Subproblem 1 -or- Local ICGN Subset DIC
     fprintf('------------ Section 4 Start ------------ \n')
@@ -204,13 +218,20 @@ for ImgSeqNum = 2 : length(ImgNormalized)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % ------ Start Local DIC IC-GN iteration ------
     % [USubpb1,FSubpb1,HtempPar,ALSub1Timetemp,ConvItPerEletemp,LocalICGNBadPtNumtemp,markCoordHoleStrain] = ...
-    %     LocalICGNQuadtree(U0,DICmesh.coordinatesFEM,Df,fNormalized,gNormalized,DICpara,'GaussNewton',tol);
+        % LocalICGNQuadtree(U0,DICmesh.coordinatesFEM,Df,fNormalized,gNormalized,DICpara,'GaussNewton',tol);
     [USubpb1,FSubpb1,HtempPar,ALSub1Timetemp,ConvItPerEletemp,LocalICGNBadPtNumtemp,markCoordHoleStrain] = ...
-        LocalICGNQuadtreeConformal(U0_r,DICmesh.coordinatesFEM_r,Df_r,fNormalized_r,gNormalized_r,DICpara,'GaussNewton',tol); 
-    % i need to check that the mask, image, and gradients all agree in terms of where they are masked
+        LocalICGNQuadtreeConformal(U0_rw,DICmesh.coordinatesFEM,RR,TT,XX_r+xc,YY_r+yc,Df_r,fNormalized_r,gNormalized_r,weight,DICpara,'GaussNewton',tol); 
+    % % i need to check that the mask, image, and gradients all agree in terms of where they are masked
     % U0 and DICmesh.coordinatesFEM still need work?
     % Conformal nature of the subsets?
     % is a penalty needed for the IC-GN to correct for strech of smaller r values?
+
+    filt_conv = ConvItPerEletemp > 0 & ConvItPerEletemp < 100;
+    Urw = USubpb1(1:2:end); Utw= USubpb1(2:2:end); 
+    figure;
+    tiledlayout(2,1)
+    nexttile; scatter(DICmesh.coordinatesFEM(filt_conv,1),DICmesh.coordinatesFEM(filt_conv,2),[],Urw(filt_conv),"filled"); title("Ux (px in original image)"); axis equal; set(gca, 'YDir', 'reverse'); colorbar; 
+    nexttile; scatter(DICmesh.coordinatesFEM(filt_conv,1),DICmesh.coordinatesFEM(filt_conv,2),[],Utw(filt_conv),"filled"); title("Uy (px in original image)"); axis equal; set(gca, 'YDir', 'reverse'); colorbar; 
 
 
 
